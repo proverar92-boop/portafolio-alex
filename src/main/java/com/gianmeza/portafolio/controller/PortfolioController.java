@@ -1,6 +1,7 @@
 package com.gianmeza.portafolio.controller;
 
 import java.nio.file.Files;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.stream.IntStream;
 
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
@@ -42,7 +44,14 @@ public class PortfolioController {
         model.addAttribute("technologies", TECHNOLOGIES);
         model.addAttribute("weeks", WEEKS);
         model.addAttribute("evidences", WEEKS.stream().map(this::buildEvidence).toList());
+        model.addAttribute("documents", storage.documents());
         return "index";
+    }
+
+    @GetMapping("/api/evidencias")
+    @ResponseBody
+    public List<Evidence> evidencesApi() {
+        return WEEKS.stream().map(this::buildEvidence).toList();
     }
 
     @GetMapping("/evidencias/{week}")
@@ -107,7 +116,69 @@ public ResponseEntity<Resource> viewFile(
     public String backed(HttpSession session, Model model) {
         if (!isAdmin(session)) return "redirect:/login";
         model.addAttribute("weeks", WEEKS);
+        model.addAttribute("documents", storage.documents());
         return "backed";
+    }
+
+    @PostMapping("/backed/documentos")
+    public String createDocument(
+            @RequestParam String title,
+            @RequestParam(required = false, defaultValue = "") String description,
+            @RequestParam("file") MultipartFile file,
+            HttpSession session,
+            RedirectAttributes redirect) {
+        if (!isAdmin(session)) return "redirect:/login";
+        try {
+            storage.saveDocument(title, description, file);
+            redirect.addFlashAttribute("message", "Documento publicado correctamente.");
+        } catch (Exception exception) {
+            redirect.addFlashAttribute("error", exception.getMessage());
+        }
+        return "redirect:/backed#documentos-admin";
+    }
+
+    @PostMapping("/backed/documentos/{id}/actualizar")
+    public String updateDocument(
+            @PathVariable long id,
+            @RequestParam String title,
+            @RequestParam(required = false, defaultValue = "") String description,
+            @RequestParam(value = "file", required = false) MultipartFile file,
+            HttpSession session,
+            RedirectAttributes redirect) {
+        if (!isAdmin(session)) return "redirect:/login";
+        try {
+            storage.updateDocument(id, title, description, file);
+            redirect.addFlashAttribute("message", "Documento actualizado correctamente.");
+        } catch (Exception exception) {
+            redirect.addFlashAttribute("error", exception.getMessage());
+        }
+        return "redirect:/backed#documentos-admin";
+    }
+
+    @PostMapping("/backed/documentos/{id}/eliminar")
+    public String deleteDocument(@PathVariable long id, HttpSession session, RedirectAttributes redirect) {
+        if (!isAdmin(session)) return "redirect:/login";
+        try {
+            storage.deleteDocument(id);
+            redirect.addFlashAttribute("message", "Documento eliminado.");
+        } catch (Exception exception) {
+            redirect.addFlashAttribute("error", exception.getMessage());
+        }
+        return "redirect:/backed#documentos-admin";
+    }
+
+    @GetMapping("/documentos/{id}/descargar")
+    public ResponseEntity<Resource> downloadDocument(@PathVariable long id) {
+        var document = storage.document(id);
+        if (document == null) return ResponseEntity.notFound().build();
+
+        Resource resource = new ByteArrayResource(document.content());
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(document.contentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        org.springframework.http.ContentDisposition.attachment()
+                                .filename(document.filename(), StandardCharsets.UTF_8).build().toString())
+                .body(resource);
     }
 
     @GetMapping("/backed/actualizar/{week}")
@@ -137,6 +208,43 @@ public ResponseEntity<Resource> viewFile(
             redirect.addFlashAttribute("error", exception.getMessage());
         }
         return "redirect:/backed";
+    }
+
+    @PostMapping("/backed/eliminar/{week}")
+    public String deleteEvidence(
+            @PathVariable int week,
+            HttpSession session,
+            RedirectAttributes redirect) {
+        if (!isAdmin(session)) return "redirect:/login";
+        if (week < 1 || week > 16) return "redirect:/backed";
+
+        try {
+            storage.deleteWeek(week);
+            redirect.addFlashAttribute("message",
+                    "Se eliminó el trabajo de la Semana " + String.format("%02d", week) + " y su contenido.");
+            return "redirect:/backed";
+        } catch (Exception exception) {
+            redirect.addFlashAttribute("error", exception.getMessage());
+            return "redirect:/backed/actualizar/" + week;
+        }
+    }
+
+    @PostMapping("/backed/actualizar/{week}/eliminar-archivo")
+    public String deleteEvidenceFile(
+            @PathVariable int week,
+            @RequestParam String filename,
+            HttpSession session,
+            RedirectAttributes redirect) {
+        if (!isAdmin(session)) return "redirect:/login";
+        if (week < 1 || week > 16) return "redirect:/backed";
+
+        try {
+            storage.deleteFile(week, filename);
+            redirect.addFlashAttribute("message", "Se eliminó el archivo seleccionado.");
+        } catch (Exception exception) {
+            redirect.addFlashAttribute("error", exception.getMessage());
+        }
+        return "redirect:/backed/actualizar/" + week;
     }
 
     @PostMapping("/backed/subir")
