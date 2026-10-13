@@ -27,6 +27,30 @@ public class PortfolioDatabaseService {
         return passwords.stream().anyMatch(stored -> matchesPassword(password, stored));
     }
 
+    public void ensureAdminAccount(String username, String email, String password) {
+        boolean allBlank = isBlank(username) && isBlank(email) && isBlank(password);
+        if (allBlank) return;
+        if (isBlank(username) || isBlank(email) || isBlank(password) || password.length() < 12) {
+            throw new IllegalStateException(
+                    "Configura ADMIN_USERNAME, ADMIN_EMAIL y una ADMIN_PASSWORD de al menos 12 caracteres.");
+        }
+
+        String cleanUsername = username.trim();
+        String cleanEmail = email.trim();
+        List<Integer> ids = jdbc.query("""
+                SELECT id FROM administrador
+                WHERE LOWER(correo) = LOWER(?) OR LOWER(usuario) = LOWER(?)
+                ORDER BY id LIMIT 1
+                """, (result, row) -> result.getInt("id"), cleanEmail, cleanUsername);
+        if (ids.isEmpty()) {
+            jdbc.update("INSERT INTO administrador (usuario, correo, password) VALUES (?, ?, ?)",
+                    cleanUsername, cleanEmail, hash(password));
+        } else {
+            jdbc.update("UPDATE administrador SET usuario = ?, correo = ?, password = ? WHERE id = ?",
+                    cleanUsername, cleanEmail, hash(password), ids.get(0));
+        }
+    }
+
     public Optional<UserProfile> findProfile(String email) {
         return jdbc.query(
                 "SELECT correo, nombre, foto, password_hash FROM perfil WHERE LOWER(correo) = LOWER(?) LIMIT 1",
@@ -72,6 +96,10 @@ public class PortfolioDatabaseService {
         }
     }
 
+    public void deleteWeek(int week) {
+        jdbc.update("DELETE FROM semanas WHERE numero_semana = ?", week);
+    }
+
     public void saveFileName(int week, String filename) {
         ensureWeek(week);
         jdbc.update("UPDATE semanas SET archivo = ? WHERE numero_semana = ?", filename, week);
@@ -88,6 +116,14 @@ public class PortfolioDatabaseService {
 
     public void deleteFiles(int week) {
         jdbc.update("DELETE FROM archivos_evidencia WHERE id_semana IN (SELECT id_semana FROM semanas WHERE numero_semana = ?)", week);
+    }
+
+    public int deleteFile(int week, String filename) {
+        return jdbc.update("""
+                DELETE FROM archivos_evidencia
+                WHERE nombre_archivo = ?
+                  AND id_semana IN (SELECT id_semana FROM semanas WHERE numero_semana = ?)
+                """, filename, week);
     }
 
     public List<StoredFile> filesFor(int week) {
@@ -128,6 +164,46 @@ public class PortfolioDatabaseService {
                 """, (result, row) -> new StoredLink(result.getString("nombre"), result.getString("url")), week);
     }
 
+    public void saveDocument(String title, String description, String filename, String contentType, byte[] content) {
+        jdbc.update("""
+                INSERT INTO documentos_portafolio (titulo, descripcion, nombre_archivo, tipo_mime, contenido)
+                VALUES (?, ?, ?, ?, ?)
+                """, title, description, filename, contentType, content);
+    }
+
+    public List<DocumentInfo> documents() {
+        return jdbc.query("""
+                SELECT id_documento, titulo, descripcion, nombre_archivo, tipo_mime
+                FROM documentos_portafolio ORDER BY id_documento DESC
+                """, (result, row) -> new DocumentInfo(result.getLong("id_documento"),
+                result.getString("titulo"), result.getString("descripcion"),
+                result.getString("nombre_archivo"), result.getString("tipo_mime")));
+    }
+
+    public Optional<StoredDocument> findDocument(long id) {
+        return jdbc.query("""
+                SELECT id_documento, titulo, descripcion, nombre_archivo, tipo_mime, contenido
+                FROM documentos_portafolio WHERE id_documento = ?
+                """, (result, row) -> new StoredDocument(result.getLong("id_documento"),
+                result.getString("titulo"), result.getString("descripcion"),
+                result.getString("nombre_archivo"), result.getString("tipo_mime"),
+                result.getBytes("contenido")), id).stream().findFirst();
+    }
+
+    public void updateDocument(long id, String title, String description, String filename,
+            String contentType, byte[] content) {
+        jdbc.update("""
+                UPDATE documentos_portafolio
+                SET titulo = ?, descripcion = ?, nombre_archivo = COALESCE(?, nombre_archivo),
+                    tipo_mime = COALESCE(?, tipo_mime), contenido = COALESCE(?, contenido)
+                WHERE id_documento = ?
+                """, title, description, filename, contentType, content, id);
+    }
+
+    public void deleteDocument(long id) {
+        jdbc.update("DELETE FROM documentos_portafolio WHERE id_documento = ?", id);
+    }
+
     private void ensureWeek(int week) {
         if (findWeek(week).isEmpty()) saveWeekDetails(week, "Evidencia de la Semana " + String.format("%02d", week), "");
     }
@@ -145,7 +221,14 @@ public class PortfolioDatabaseService {
         }
     }
 
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
     public record WeekData(int week, String title, String description, String link, String filename, String status) {}
     public record StoredFile(String filename, String contentType, byte[] content) {}
     public record StoredLink(String name, String url) {}
+    public record DocumentInfo(long id, String title, String description, String filename, String contentType) {}
+    public record StoredDocument(long id, String title, String description, String filename,
+            String contentType, byte[] content) {}
 }
