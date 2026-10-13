@@ -8,7 +8,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Actualizar ${evidence.weekLabel()} | e-Portafolio</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="${pageContext.request.contextPath}/css/styles.css">
+    <link rel="stylesheet" href="${pageContext.request.contextPath}/css/styles.css?v=delete-work">
 </head>
 <body class="edit-body">
 <nav class="site-nav is-scrolled">
@@ -34,6 +34,13 @@
         </div>
         <p class="backed-intro">Cambia los datos de la semana. Si seleccionas archivos nuevos, reemplazarán los archivos almacenados actualmente.</p>
 
+        <c:if test="${not empty message}">
+            <div class="edit-success"><i class="bi bi-check-circle-fill"></i> <c:out value="${message}"/></div>
+        </c:if>
+        <c:if test="${not empty error}">
+            <div class="edit-error"><i class="bi bi-exclamation-circle-fill"></i> <c:out value="${error}"/></div>
+        </c:if>
+
         <section class="upload-panel edit-panel">
             <form method="post" action="${pageContext.request.contextPath}/backed/actualizar/${evidence.week()}" enctype="multipart/form-data" class="auth-form">
                 <label class="field">
@@ -56,6 +63,16 @@
             </form>
         </section>
 
+        <form method="post" action="${pageContext.request.contextPath}/backed/eliminar/${evidence.week()}"
+              class="edit-delete-form"
+              onsubmit="return confirm('¿Eliminar definitivamente el trabajo, sus archivos y enlaces de esta semana? Esta acción no se puede deshacer.');">
+            <div>
+                <strong>Eliminar este trabajo</strong>
+                <span>Se borrarán los archivos y enlaces asociados a esta semana.</span>
+            </div>
+            <button class="edit-delete-button" type="submit"><i class="bi bi-trash3"></i> Eliminar trabajo</button>
+        </form>
+
         <section class="upload-panel current-files-panel">
             <h2><i class="bi bi-folder2-open"></i> Archivos actuales</h2>
             <c:choose>
@@ -68,9 +85,21 @@
                             <div class="file-item">
                                 <i class="bi ${file.icon()}"></i>
                                 <div>
-                                    <strong>${file.name()}</strong>
-                                    <small>${file.type()}</small>
+                                    <strong><c:out value="${file.name()}"/></strong>
+                                    <small><c:out value="${file.type()}"/></small>
                                 </div>
+                                <c:if test="${not file.external()}">
+                                    <form method="post"
+                                          action="${pageContext.request.contextPath}/backed/actualizar/${evidence.week()}/eliminar-archivo"
+                                          class="file-delete-form"
+                                          onsubmit="return confirm('¿Eliminar este archivo? Esta acción no se puede deshacer.');">
+                                        <input type="hidden" name="filename" value="${file.name()}">
+                                        <button class="file-delete-button" type="submit" aria-label="Eliminar ${file.name()}"
+                                                title="Eliminar archivo">
+                                            <i class="bi bi-trash3"></i> Eliminar
+                                        </button>
+                                    </form>
+                                </c:if>
                             </div>
                         </c:forEach>
                     </div>
