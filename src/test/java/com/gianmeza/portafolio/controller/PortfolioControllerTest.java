@@ -184,6 +184,74 @@ class PortfolioControllerTest {
         verify(model).addAttribute(eq("weeks"), argThat(weeks -> ((List<?>) weeks).size() == 16));
     }
 
+    @Test
+    @DisplayName("Should delete a week's work for an admin")
+    void testDeleteEvidenceForAdmin() throws Exception {
+        when(session.getAttribute("admin")).thenReturn(true);
+
+        String result = portfolioController.deleteEvidence(5, session, redirectAttributes);
+
+        assertEquals("redirect:/backed", result);
+        verify(evidenceStorageService).deleteWeek(5);
+        verify(redirectAttributes).addFlashAttribute(eq("message"), contains("Semana 05"));
+    }
+
+    @Test
+    @DisplayName("Should redirect non-admin users before deleting a week")
+    void testDeleteEvidenceRedirectsNonAdmin() throws Exception {
+        when(session.getAttribute("admin")).thenReturn(false);
+
+        String result = portfolioController.deleteEvidence(5, session, redirectAttributes);
+
+        assertEquals("redirect:/login", result);
+        verifyNoInteractions(evidenceStorageService);
+    }
+
+    @Test
+    @DisplayName("Should reject invalid week numbers before deleting")
+    void testDeleteEvidenceRejectsInvalidWeek() throws Exception {
+        when(session.getAttribute("admin")).thenReturn(true);
+
+        String result = portfolioController.deleteEvidence(17, session, redirectAttributes);
+
+        assertEquals("redirect:/backed", result);
+        verifyNoInteractions(evidenceStorageService);
+    }
+
+    @Test
+    @DisplayName("Should delete a selected evidence file for an admin")
+    void testDeleteEvidenceFileForAdmin() throws Exception {
+        when(session.getAttribute("admin")).thenReturn(true);
+
+        String result = portfolioController.deleteEvidenceFile(2, "error.png", session, redirectAttributes);
+
+        assertEquals("redirect:/backed/actualizar/2", result);
+        verify(evidenceStorageService).deleteFile(2, "error.png");
+        verify(redirectAttributes).addFlashAttribute(eq("message"), contains("archivo seleccionado"));
+    }
+
+    @Test
+    @DisplayName("Should not delete evidence files for non-admin users")
+    void testDeleteEvidenceFileRedirectsNonAdmin() throws Exception {
+        when(session.getAttribute("admin")).thenReturn(false);
+
+        String result = portfolioController.deleteEvidenceFile(2, "error.png", session, redirectAttributes);
+
+        assertEquals("redirect:/login", result);
+        verifyNoInteractions(evidenceStorageService);
+    }
+
+    @Test
+    @DisplayName("Should reject file deletion for invalid week numbers")
+    void testDeleteEvidenceFileRejectsInvalidWeek() throws Exception {
+        when(session.getAttribute("admin")).thenReturn(true);
+
+        String result = portfolioController.deleteEvidenceFile(17, "error.png", session, redirectAttributes);
+
+        assertEquals("redirect:/backed", result);
+        verifyNoInteractions(evidenceStorageService);
+    }
+
     // ========== File Upload Tests ==========
     
     @Test
